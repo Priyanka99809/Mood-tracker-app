@@ -49,7 +49,7 @@ jobs:
         run: |
           IMAGE_NAME=${{ secrets.DOCKER_USERNAME }}/mood-journal
           COMMIT_SHA=$(echo $GITHUB_SHA | cut -c1-7)  # first 7 chars of SHA
-          docker build -t $IMAGE_NAME:latest -T $IMAGE_NAME:$COMMIT_SHA
+          docker build -t $IMAGE_NAME:latest -t $IMAGE_NAME:$COMMIT_SHA
 
       # 7️⃣ Push Docker image
       - name: Push Docker image
