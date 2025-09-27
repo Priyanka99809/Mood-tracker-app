@@ -58,3 +58,31 @@ jobs:
           COMMIT_SHA=$(echo $GITHUB_SHA | cut -c1-7)  # first 7 chars of SHA
           docker push ${{ secrets.DOCKER_USERNAME }}/mood-journal:latest
           docker push $IMAGE_NAME:$COMMIT_SHA
+      
+      - name: Clean up old local Docker images
+        run: |
+          docker image prune -f
+
+      
+      - name: Clean old SHA-tagged Docker images
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          # Get Docker Hub JWT token
+          TOKEN=$(curl -s -H "Content-Type: application/json" \
+            -X POST -d '{"username": "'"$DOCKER_USERNAME"'", "password": "'"$DOCKER_PASSWORD"'"}' \
+            https://hub.docker.com/v2/users/login/ | jq -r .token)
+
+          REPO=$DOCKER_USERNAME/mood-journal
+
+          # List all tags
+          TAGS_JSON=$(curl -s -H "Authorization: JWT $TOKEN" \
+            "https://hub.docker.com/v2/repositories/$REPO/tags/?page_size=100")
+
+          # Loop through tags and delete SHA tags (skip 'latest')
+          echo "$TAGS_JSON" | jq -r '.results[].name' | grep -v '^latest$' | while read tag; do
+            echo "Deleting tag: $tag"
+            curl -s -X DELETE -H "Authorization: JWT $TOKEN" \
+              "https://hub.docker.com/v2/repositories/$REPO/tags/$tag/"
+          done
