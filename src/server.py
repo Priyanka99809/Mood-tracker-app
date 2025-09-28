@@ -1,28 +1,28 @@
-# app.py
 from flask import Flask, request, jsonify
-import sqlite3
+from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+import os
 
 app = Flask(__name__)
 
-DB = "moods.db"
-def get_db():
-    return app.config.get('DB', DB)
+# Pick DB based on environment
+DB_URL = os.getenv("DATABASE_URL", "sqlite:///moods.db")
+app.config['SQLALCHEMY_DATABASE_URI'] = DB_URL
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Create table if not exists
-def init_db():
-    with sqlite3.connect(get_db()) as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS moods (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                mood TEXT NOT NULL,
-                reason TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-init_db()
+db = SQLAlchemy(app)
 
-# Add a new mood
+# Model
+class Mood(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    mood = db.Column(db.String(50), nullable=False)
+    reason = db.Column(db.String(200))
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+# Create tables
+with app.app_context():
+    db.create_all()
+
 @app.route("/log", methods=["POST"])
 def log_mood():
     data = request.get_json()
@@ -30,20 +30,17 @@ def log_mood():
     reason = data.get("reason", "")
     if not mood:
         return jsonify({"error": "Mood is required"}), 400
-    with sqlite3.connect(get_db()) as conn:
-        conn.execute("INSERT INTO moods (mood, reason) VALUES (?, ?)", (mood, reason))
+    new_mood = Mood(mood=mood, reason=reason)
+    db.session.add(new_mood)
+    db.session.commit()
     return jsonify({"message": "Mood logged successfully!"})
 
-# Get all moods
 @app.route("/logs", methods=["GET"])
 def get_logs():
-    with sqlite3.connect(get_db()) as conn:
-        cursor = conn.execute("SELECT id, mood, reason, timestamp FROM moods ORDER BY timestamp DESC")
-        rows = cursor.fetchall()
-    logs = [{"id": r[0], "mood": r[1], "reason": r[2], "timestamp": r[3]} for r in rows]
+    moods = Mood.query.order_by(Mood.timestamp.desc()).all()
+    logs = [{"id": m.id, "mood": m.mood, "reason": m.reason, "timestamp": m.timestamp.isoformat()} for m in moods]
     return jsonify(logs)
 
-# Health check
 @app.route("/", methods=["GET"])
 def home():
     return "Mood Journal API is up 💖"
