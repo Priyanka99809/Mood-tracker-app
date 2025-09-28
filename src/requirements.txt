@@ -1,2 +1,2 @@
 flask
-pip install flask_sqlalchemy
+flask_sqlalchemy
