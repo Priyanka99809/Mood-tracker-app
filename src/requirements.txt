@@ -1,2 +1,2 @@
 flask
-pip install sqlalchemy psycopg2-binary
+pip install flask_sqlalchemy
