@@ -1,35 +1,27 @@
 import unittest
 import json
-import sys
-import os
-from server import app
-import sqlite3
+from server import app, db, Mood
 
 class MoodJournalTestCase(unittest.TestCase):
     def setUp(self):
         # Configure app for testing
         app.config['TESTING'] = True
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'  # in-memory DB
+        app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
         self.client = app.test_client()
-        
-        # Use a test database
-        self.test_db = "test_moods.db"
-        app.config['DB'] = self.test_db
-        
-        # Initialize test DB
-        with sqlite3.connect(self.test_db) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS moods (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    mood TEXT NOT NULL,
-                    reason TEXT,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
+
+        # Create tables
+        with app.app_context():
+            db.create_all()
+            # Insert a test mood
+            test_mood = Mood(mood="grateful", reason="Unit test")
+            db.session.add(test_mood)
+            db.session.commit()
 
     def tearDown(self):
-        # Remove test DB after tests
-        if os.path.exists(self.test_db):
-            os.remove(self.test_db)
+        # Drop tables
+        with app.app_context():
+            db.drop_all()
 
     def test_health_check(self):
         response = self.client.get('/')
@@ -37,7 +29,7 @@ class MoodJournalTestCase(unittest.TestCase):
         self.assertIn(b"Mood Journal API is up", response.data)
 
     def test_log_mood_success(self):
-        data = {"mood": "grateful", "reason": "Testing"}
+        data = {"mood": "happy", "reason": "Testing"}
         response = self.client.post('/log', data=json.dumps(data),
                                     content_type='application/json')
         self.assertEqual(response.status_code, 200)
@@ -51,15 +43,12 @@ class MoodJournalTestCase(unittest.TestCase):
         self.assertIn(b"Mood is required", response.data)
 
     def test_get_logs(self):
-        # Insert a mood manually
-        with sqlite3.connect(self.test_db) as conn:
-            conn.execute("INSERT INTO moods (mood, reason) VALUES (?, ?)", ("grateful", "Unit test"))
-        
         response = self.client.get('/logs')
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
         self.assertIsInstance(data, list)
-        self.assertEqual(data[0]['mood'], "grateful")
+        self.assertGreaterEqual(len(data), 1)
+        self.assertEqual(data[0]['mood'], "grateful")  # the one inserted in setUp
 
 if __name__ == '__main__':
     unittest.main()
